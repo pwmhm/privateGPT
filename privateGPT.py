@@ -16,6 +16,7 @@ persist_directory = os.environ.get('PERSIST_DIRECTORY')
 model_type = os.environ.get('MODEL_TYPE')
 model_path = os.environ.get('MODEL_PATH')
 model_n_ctx = os.environ.get('MODEL_N_CTX')
+model_n_gpu_layers = os.environ.get('MODEL_N_GPU_LAYERS')
 target_source_chunks = int(os.environ.get('TARGET_SOURCE_CHUNKS',4))
 
 from constants import CHROMA_SETTINGS
@@ -31,7 +32,7 @@ def main():
     # Prepare the LLM
     match model_type:
         case "LlamaCpp":
-            llm = LlamaCpp(model_path=model_path, n_ctx=model_n_ctx, callbacks=callbacks, verbose=False)
+            llm = LlamaCpp(model_path=model_path, n_ctx=model_n_ctx, callbacks=callbacks, verbose=False, n_gpu_layers=model_n_gpu_layers)
         case "GPT4All":
             llm = GPT4All(model=model_path, n_ctx=model_n_ctx, backend='gptj', callbacks=callbacks, verbose=False)
         case _default:
@@ -46,7 +47,7 @@ def main():
 
         # Get the answer from the chain
         res = qa(query)
-        answer, docs = res['result'], [] if args.hide_source else res['source_documents']
+        answer, docs = res['result'], [] if not args.show_source else res['source_documents']
 
         # Print the result
         print("\n\n> Question:")
@@ -62,8 +63,8 @@ def main():
 def parse_arguments():
     parser = argparse.ArgumentParser(description='privateGPT: Ask questions to your documents without an internet connection, '
                                                  'using the power of LLMs.')
-    parser.add_argument("--hide-source", "-S", action='store_true',
-                        help='Use this flag to disable printing of source documents used for answers.')
+    parser.add_argument("--show-source", "-S", action='store_true',
+                        help='Use this flag to enable printing of source documents used for answers.')
 
     parser.add_argument("--mute-stream", "-M",
                         action='store_true',
