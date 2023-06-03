@@ -25,7 +25,7 @@ ENV FORCE_CMAKE=1
 ENV LLAMA_CUBLAS=1
 
 WORKDIR /home/appuser
-COPY ./requirements.txt .
+COPY . .
 RUN pip install -r requirements.txt --no-cache-dir
 
 ENTRYPOINT [ "/bin/bash" ]

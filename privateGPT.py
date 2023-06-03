@@ -6,72 +6,111 @@ from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 from langchain.vectorstores import Chroma
 from langchain.llms import GPT4All, LlamaCpp
 import os
-import argparse
-
-load_dotenv()
-
-embeddings_model_name = os.environ.get("EMBEDDINGS_MODEL_NAME")
-persist_directory = os.environ.get('PERSIST_DIRECTORY')
-
-model_type = os.environ.get('MODEL_TYPE')
-model_path = os.environ.get('MODEL_PATH')
-model_n_ctx = os.environ.get('MODEL_N_CTX')
-model_n_gpu_layers = os.environ.get('MODEL_N_GPU_LAYERS')
-target_source_chunks = int(os.environ.get('TARGET_SOURCE_CHUNKS',4))
-
+from functools import partial
+import json
+import http.server
 from constants import CHROMA_SETTINGS
 
-def main():
-    # Parse the command line arguments
-    args = parse_arguments()
-    embeddings = HuggingFaceEmbeddings(model_name=embeddings_model_name)
-    db = Chroma(persist_directory=persist_directory, embedding_function=embeddings, client_settings=CHROMA_SETTINGS)
-    retriever = db.as_retriever(search_kwargs={"k": target_source_chunks})
-    # activate/deactivate the streaming StdOut callback for LLMs
-    callbacks = [] if args.mute_stream else [StreamingStdOutCallbackHandler()]
-    # Prepare the LLM
-    match model_type:
-        case "LlamaCpp":
-            llm = LlamaCpp(model_path=model_path, n_ctx=model_n_ctx, callbacks=callbacks, verbose=False, n_gpu_layers=model_n_gpu_layers)
-        case "GPT4All":
-            llm = GPT4All(model=model_path, n_ctx=model_n_ctx, backend='gptj', callbacks=callbacks, verbose=False)
-        case _default:
-            print(f"Model {model_type} not supported!")
-            exit;
-    qa = RetrievalQA.from_chain_type(llm=llm, chain_type="stuff", retriever=retriever, return_source_documents= not args.hide_source)
-    # Interactive questions and answers
-    while True:
-        query = input("\nEnter a query: ")
-        if query == "exit":
-            break
+# Port to send request to
+PORT = 8000
 
-        # Get the answer from the chain
-        res = qa(query)
-        answer, docs = res['result'], [] if not args.show_source else res['source_documents']
 
-        # Print the result
-        print("\n\n> Question:")
-        print(query)
-        print("\n> Answer:")
-        print(answer)
 
-        # Print the relevant sources used for the answer
-        for document in docs:
-            print("\n> " + document.metadata["source"] + ":")
-            print(document.page_content)
 
-def parse_arguments():
-    parser = argparse.ArgumentParser(description='privateGPT: Ask questions to your documents without an internet connection, '
-                                                 'using the power of LLMs.')
-    parser.add_argument("--show-source", "-S", action='store_true',
-                        help='Use this flag to enable printing of source documents used for answers.')
 
-    parser.add_argument("--mute-stream", "-M",
-                        action='store_true',
-                        help='Use this flag to disable the streaming StdOut callback for LLMs.')
+class Prompter():
+    def __init__(self) -> None:
+        load_dotenv()
+        self.embeddings_model_name = os.environ.get("EMBEDDINGS_MODEL_NAME")
+        self.persist_directory = os.environ.get('PERSIST_DIRECTORY')
+        self.model_type = os.environ.get('MODEL_TYPE')
+        self.model_path = os.environ.get('MODEL_PATH')
+        self.model_n_ctx = os.environ.get('MODEL_N_CTX')
+        self.model_n_gpu_layers = os.environ.get('MODEL_N_GPU_LAYERS')
+        self.target_source_chunks = int(os.environ.get('TARGET_SOURCE_CHUNKS',4))
 
-    return parser.parse_args()
+        self.setup_llm()
+        self.refresh_qa()
+
+    def setup_llm(self):
+        # Parse the command line arguments
+        self.embeddings = HuggingFaceEmbeddings(model_name=self.embeddings_model_name)
+        # activate/deactivate the streaming StdOut callback for LLMs
+        callbacks = [StreamingStdOutCallbackHandler()]
+        # Prepare the LLM
+        match self.model_type:
+            case "LlamaCpp":
+                self.llm = LlamaCpp(model_path=self.model_path, n_ctx=self.model_n_ctx, callbacks=callbacks, verbose=False, n_gpu_layers=self.model_n_gpu_layers)
+            case "GPT4All":
+                self.llm = GPT4All(model=self.model_path, n_ctx=self.model_n_ctx, backend='gptj', callbacks=callbacks, verbose=False)
+            case _default:
+                print(f"Model {self.model_type} not supported!")
+                exit;
+
+    def refresh_qa(self):
+        db = Chroma(persist_directory=self.persist_directory, embedding_function=self.embeddings, client_settings=CHROMA_SETTINGS)
+        retriever = db.as_retriever(search_kwargs={"k": self.target_source_chunks})
+        self.qa = RetrievalQA.from_chain_type(llm=self.llm, chain_type="stuff", retriever=retriever, return_source_documents= False)
+
+
+    def prompt(self, query):
+        res = self.qa(query)
+        return res['result']
+
+
+class Serve(http.server.BaseHTTPRequestHandler):
+
+    def __init__(self, prompter, *args, **kwargs) -> None:
+        self.prompter = prompter
+        super().__init__(*args, **kwargs)
+
+    def do_GET(self):
+        str = "V1.0"
+        self.wfile.write(str.encode('utf-8'))
+    
+    def do_POST(self):
+        content_length = int(self.headers['Content-Length'])
+        data = self.rfile.read(content_length).decode('utf-8')
+        request = json.loads(data)
+
+        request_type = request['request_type']
+        request_content = request['content']
+        response_json = {}
+        response_code = 200
+        
+        if request_type == "prompt":
+            assert request_content != str, "Prompt must be literal strings!!"
+            response_content = self.prompter.prompt(request_content)
+            response_json['content'] = response_content
+            pass
+        elif request_type == "ingestion":
+            #TODO run ingestion methods here
+            pass
+        else:
+            response_code = 404
+
+        self.send_response(response_code)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+
+        response_json['code'] = response_code
+        self.wfile.write(json.dumps(response_json).encode('utf-8'))
+
+
 
 
 if __name__ == "__main__":
-    main()
+    server_address = ("", PORT)
+    
+    prompter = Prompter()
+    handler = partial(Serve, prompter)
+    http_server = http.server.HTTPServer(server_address, handler)
+    print("Server Started!")
+    try:
+        http_server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+
+    http_server.server_close()
+
+ 
