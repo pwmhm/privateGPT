@@ -10,6 +10,11 @@ on:
 jobs:
   build-container:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - file: privateGPT.dockerfile
+          - file: privateGPT_ui.dockerfile
     
     steps:
       - uses: actions/checkout@v2
@@ -37,7 +42,9 @@ jobs:
         uses: docker/build-push-action@v3
         with:
           context: .
-          file: privateGPT.dockerfile
+          file: ${{ matrix.file }}
           push: ${{ github.ref_type == 'tag' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+      
+

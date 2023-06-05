@@ -24,8 +24,16 @@ ENV CMAKE_ARGS="-DLLAMA_CUBLAS=1"
 ENV FORCE_CMAKE=1
 ENV LLAMA_CUBLAS=1
 
-WORKDIR /home/appuser
+# First copy the requirements.txt instead of everything so 
+# The pip install layer is cached
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+# copy initial documents to db for testing
+RUN mkdir db
+COPY ./source_documents ./db/src_docs
+
+# Then copy the rest
 COPY . .
-RUN pip install -r requirements.txt --no-cache-dir
 
 ENTRYPOINT [ "/bin/bash" ]

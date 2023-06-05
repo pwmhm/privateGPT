@@ -5,6 +5,9 @@ from typing import List
 from dotenv import load_dotenv
 from multiprocessing import Pool
 from tqdm import tqdm
+import glob
+import logging
+import sqlite3
 
 from langchain.document_loaders import (
     CSVLoader,
@@ -28,15 +31,67 @@ from constants import CHROMA_SETTINGS
 
 
 load_dotenv()
-
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 persist_directory = os.environ.get('PERSIST_DIRECTORY')
-source_directory = os.environ.get('SOURCE_DIRECTORY', 'source_documents')
 embeddings_model_name = os.environ.get('EMBEDDINGS_MODEL_NAME')
 chunk_size = 500
 chunk_overlap = 50
 
+class dataManager():
+    def __init__(self, dbpath=".", db_name="manager.db") -> None:
+        self.db = os.path.join(dbpath, db_name)
+        # Create the database
+        if not os.path.exists(self.db):
+            os.makedirs(dbpath, exist_ok=True)
+            print(self.db)
+            conn = sqlite3.connect(self.db)
+            conn.close()
+
+    def create_table(self, table_name, values: dict):
+        conn = sqlite3.connect(self.db)
+
+        cmd = f'''
+        CREATE TABLE IF NOT EXISTS {table_name} (
+        id integer PRIMARY KEY,
+        {", ".join([" ".join([k, v, "NOT", "NULL"]) for k, v in values.items()])}
+        );
+        '''
+        conn.execute(cmd)
+        logger.info(f"Successfully created a database - {self.db}")
+        conn.close()
+
+    def drop_values(self, table_name, values:dict):
+        conn = sqlite3.connect(self.db)
+        for k, v in values.items():
+            cmd = f"DELETE FROM {table_name} WHERE {k} = '{v}'"
+            conn.execute(cmd)
+        conn.close()
+
+    def insert_values(self, table_name, values: list):
+        conn = sqlite3.connect(self.db)
+
+        id = conn.execute(f"SELECT max(id) FROM {table_name};")
+        max_id = list([x for x in id][0])[0]
+        max_id = 0 if not max_id else int(max_id)
+        for idx, value in enumerate(values):
+            try:
+                cmd = f"INSERT into {table_name} VALUES({', '.join(['?']*(1+len(value)))})"
+                payload = [max_id+1+idx] + value
+                logger.info(payload)
+                cursor = conn.cursor()
+                cursor.execute(cmd, payload)
+                conn.commit()
+            except Exception as E:
+                logger.error(E)
+        conn.close()
+
+        # conn.execute('''\
+        # CREATE TABLE SOURCE_DOCUMENTS
+        # (ID INT PRIMARY KEY NOT NULL,
+        # PATH          TEXT NOT NULL);
+        # ''')
 
 # Custom document loaders
 class MyElmLoader(UnstructuredEmailLoader):
@@ -110,19 +165,19 @@ def load_documents(source_dir: str, ignored_files: List[str] = []) -> List[Docum
 
     return results
 
-def process_documents(ignored_files: List[str] = []) -> List[Document]:
+def process_documents(ignored_files: List[str] = [], source_directory: str = ".") -> List[Document]:
     """
     Load documents and split in chunks
     """
-    print(f"Loading documents from {source_directory}")
+    logger.info(f"Loading documents from {source_directory}")
     documents = load_documents(source_directory, ignored_files)
     if not documents:
-        print("No new documents to load")
-        exit(0)
-    print(f"Loaded {len(documents)} new documents from {source_directory}")
+        logger.info("No new documents to load")
+        return []
+    logger.info(f"Loaded {len(documents)} new documents from {source_directory}")
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     texts = text_splitter.split_documents(documents)
-    print(f"Split into {len(texts)} chunks of text (max. {chunk_size} tokens each)")
+    logger.info(f"Split into {len(texts)} chunks of text (max. {chunk_size} tokens each)")
     return texts
 
 def does_vectorstore_exist(persist_directory: str) -> bool:
@@ -138,29 +193,70 @@ def does_vectorstore_exist(persist_directory: str) -> bool:
                 return True
     return False
 
-def main():
+def update_vdb(embeddings=None, source_dir="source_documents"):
     # Create embeddings
-    embeddings = HuggingFaceEmbeddings(model_name=embeddings_model_name)
+    if not embeddings:
+        embeddings = HuggingFaceEmbeddings(model_name=embeddings_model_name)
 
     if does_vectorstore_exist(persist_directory):
         # Update and store locally vectorstore
-        print(f"Appending to existing vectorstore at {persist_directory}")
+        logger.info(f"Appending to existing vectorstore at {persist_directory}")
         db = Chroma(persist_directory=persist_directory, embedding_function=embeddings, client_settings=CHROMA_SETTINGS)
         collection = db.get()
-        texts = process_documents([metadata['source'] for metadata in collection['metadatas']])
-        print(f"Creating embeddings. May take some minutes...")
+        texts = process_documents([metadata['source'] for metadata in collection['metadatas']], source_dir)
+        if not texts:
+            logger.info("No new documents found, vectordb up to date.")
+            return
+        logger.info(f"Creating embeddings. May take some minutes...")
         db.add_documents(texts)
     else:
         # Create and store locally vectorstore
-        print("Creating new vectorstore")
-        texts = process_documents()
-        print(f"Creating embeddings. May take some minutes...")
+        logger.info("Creating new vectorstore")
+        texts = process_documents(source_directory=source_dir)
+        if not texts:
+            logger.info("No new documents found, vectordb up to date.")
+            return
         db = Chroma.from_documents(texts, embeddings, persist_directory=persist_directory, client_settings=CHROMA_SETTINGS)
     db.persist()
     db = None
 
-    print(f"Ingestion complete! You can now run privateGPT.py to query your documents")
+class gptManager(dataManager):
+    def __init__(self, dbpath=".", db_name="manager.db") -> None:
+        super().__init__(dbpath, db_name)
+        self.raw_docs_dir = os.path.join(dbpath, "src_docs")
+        self.doc_manager = ["docs", {
+            "doc_path": "TEXT"
+        }]
+
+        self.create_table(self.doc_manager[0], self.doc_manager[1])
+        self.init_db()
+        
+
+    def init_db(self):
+        conn = sqlite3.connect(self.db)
+        
+        # get already queried files 
+        cmd = f"SELECT {list(self.doc_manager[1].keys())[0]} FROM {self.doc_manager[0]}"
+        cur = conn.cursor()
+        cur.execute(cmd)
+        files = [ row[0] for row in cur.fetchall() ]
+        docs = []
+        for extensions in list(LOADER_MAPPING.keys()):
+            files_toadd = [ [f"'{doc}'"] for doc in glob.glob(os.path.join(self.raw_docs_dir, f"*{extensions}")) if f"'{doc}'" not in files]
+            docs.extend(files_toadd)
+
+        logger.info(f"found {len(docs)} new files to add.")
+        if docs:
+            self.insert_values(self.doc_manager[0], docs)
+            update_vdb(source_dir=self.raw_docs_dir)
+        conn.close()
 
 
-if __name__ == "__main__":
-    main()
+    def new_session(self):
+        # TODO 
+        title = "session-xxx"
+        values = {
+            "user": "TEXT",
+            "message": "TEXT"
+        }
+        self.create_table(title, values)

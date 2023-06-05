@@ -1,0 +1,43 @@
+services:
+  pgpt:
+    build:
+      dockerfile: privateGPT.dockerfile
+    entrypoint: ["python3", "privateGPT.py"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - pgpt_db:/home/appuser/db
+      - pgpt_models:/home/appuser/models
+    networks:
+      - pgpt
+    ports:
+      - "8000:8000"
+  pgpt-ui:
+    container_name: pgpt_ui
+    build: 
+      dockerfile: privateGPT_ui.dockerfile
+    volumes:
+      - pgpt_db:/var/www/html/db
+    networks:
+      pgpt:
+        aliases:
+          - pgpt-ui
+    ports:
+      - '8080:80'
+
+
+volumes:
+  pgpt_models:
+    driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: ./models
+  pgpt_db:
+networks:
+  pgpt:
