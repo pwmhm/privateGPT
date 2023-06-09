@@ -5,14 +5,21 @@ See the main repository for more details. This fork is a private project origina
 
    - Docker
    - Nvidia-docker support
-   - ...
+   - Docker compose
 
-# Running (WIP)
+# Running
 
 Build the container using the command below. It should take care of all dependencies automatically.
 
 ```shell
-docker build -t privateGPT -f privateGPT.dockerfile .
+docker compose -f docker-compose.yml build
+```
+
+Put your model on ./model and your initial documents on ./source_documents.
+
+Then run it using 
+```shell
+docker compose -f docker-compose.yml build
 ```
 
 # Getting the model
@@ -35,6 +42,8 @@ docker run --network=host --gpus all --mount type=bind,source=$(pwd),target=/tmp
 
    - [x] Dockerize privateGPT
    - [x] Add GPU support for either one of the models
-   - [ ] Modify dockerfile such that deployment is automatic
-   - [ ] Turn into HTTP server (kinda like a serverless type of thing?)
-   - [ ] Create simple UI (kinda like ChatGPT UI)
+   - [X] Modify dockerfile such that deployment is automatic
+   - [x] Turn into HTTP server (kinda like a serverless type of thing?)
+   - [x] Create simple UI (kinda like ChatGPT UI)
+   - [ ] Prettify UI
+   - [ ] Add more functionality (add/del documents, delete sessions)
