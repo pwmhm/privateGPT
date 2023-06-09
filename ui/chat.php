@@ -1,13 +1,29 @@
 <?php
     session_start();
-    $cur_active_chat = $_SESSION['active_session'];
-    $myPDO = new PDO('sqlite:db/sessions.db');
-    $result = $myPDO->query("SELECT * FROM ". $cur_active_chat);
-
-    foreach($result as $row){
-        $align = ($row['USER'] == 'AI' ? "left" : "right");
-
-        print "<p align=".$align."><b>".$row['USER']."</b> : ".$row['MESSAGE']."</p>";
-    }
-
 ?>
+<html>
+    <head>
+    </head>
+    <body>
+        <?php
+            $myPDO = new PDO('sqlite:db/manager.db');
+
+            if( isset($_GET['sess']))
+            {
+                $selected_session = cleanInput($_GET['sess']);
+                $result = $myPDO->query("SELECT * FROM $selected_session");
+            
+                foreach($result as $row){
+                    $align = ($row['user'] == 'AI' ? "left" : "right");
+                    print "<p align=".$align."><b>".$row['user']."</b> : ".$row['message']."</p>";
+                }
+            }
+            function cleanInput($input){
+                $clean = strtolower( $input); //string becomes lowercase
+                // $clean = substr( $clean,0,12); //The string takes the first 12 digits, and the rest is discarded.
+                $clean = str_replace("'", '', $clean);
+                return $clean;
+              }
+        ?>
+    </body>
+</html>

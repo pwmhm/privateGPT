@@ -49,7 +49,7 @@ class Prompter():
         # Parse the command line arguments
         self.embeddings = HuggingFaceEmbeddings(model_name=self.embeddings_model_name)
         # activate/deactivate the streaming StdOut callback for LLMs
-        callbacks = [StreamingStdOutCallbackHandler()]
+        callbacks = [] # [StreamingStdOutCallbackHandler()]
         # Prepare the LLM
         match self.model_type:
             case "LlamaCpp":
@@ -109,12 +109,20 @@ class Serve(http.server.BaseHTTPRequestHandler):
         
         if request_type == "prompt":
             assert request_content != str, "Prompt must be literal strings!!"
+            session = request["session"] 
+            logging.info(session)
+            self.prompter.db_manager.insert_values(session, [["user", request_content]])
             response_content = self.prompter.prompt(request_content)
+            self.prompter.db_manager.insert_values(session, [["AI", response_content]])
+
             response_json['content'] = response_content
             pass
         elif request_type == "ingestion":
             #TODO run ingestion methods here
             pass
+        elif request_type == "new_sess":
+            session_name = request_content
+            self.prompter.db_manager.new_session(session_name)
         else:
             response_code = 404
 

@@ -1,22 +1,29 @@
 <?php
   session_start();
-  $_SESSION['active_session'] = "sess_0";
 ?>
 <!DOCTYPE html>
 <html>
 <head>
   <script src="jquery.min.js"></script>
   <script>
-    function create_paragraph(class_name, content){
-      const paragraph = document.createElement("p");
-      const node = document.createTextNode(content);
-      paragraph.appendChild(node)
-      const target = document.getElementById(class_name)
-      target.appendChild(paragraph)
+    let active_session = "";
+
+    // TODO get_hist and refresh has a conflict. fix this.
+    function refresh(){
+      if(active_session){
+        $("#chat").load(`chat.php/?sess=${active_session}`);
+        $(".sessions").load('sessions.php');
+      }
     }
+
+    // function when changing active session, separate from refresh_chat()
+    function get_hist(sess){
+                active_session=sess;
+            }
     
-    function msg() {
-        const res_body = JSON.stringify({ "request_type": "prompt", "content": "what happened to the patek?"})
+    // main function for sending requests
+    function msg(req_type, content, session=""){
+        const res_body = JSON.stringify({ "request_type": req_type, "content": content, "session": session})
         fetch("http://localhost:8000", {
         method: 'POST',
         headers: {
@@ -24,18 +31,64 @@
         },
         body: res_body
         })
-        .then(response => response.json())
-        .then(response => create_paragraph("res", response["content"])
-        )
+      }
+    
+    // wrapper for sending prompt to gpt.
+    function get_prompt(){
+      const content = document.getElementById("prompt");
+      msg("prompt", content.value, active_session);
+    }
+
+    window.onload = function(){
+      setInterval(refresh, 200);
     }
   </script>
   <style>
+    html{
+      height:98vh;
+      width:auto;
+      background: #4f5b66;
+      font: 1em helvetica;
+      z-index: 100;
+    }
+    body{
+      height:inherit;
+      width:inherit;
+    }
+    .main{
+    display: inline-block;
+    width:100%;
+    height:100%;
+    }
     .history{
-      width:20em;
-      height:20em;
-      border: 2px solid black;
+      font-size: 1.8em;
+      display:inherit;
+      float:right;
+      width:74.5%;
+      height:76%;
       padding-left:1em;
       padding-right:1em;
+      box-shadow: 2px solid black;
+      overflow-y: auto;
+      z-index: -1;
+    }
+    .sessions{
+      background:#343d46;
+      display:inherit;
+      width:20%;
+      height:76%;
+      padding-left:5px;
+      padding-right:1em;
+      margin-bottom:-25px;
+    }
+    .prompter{
+      background:#343d46;
+      display:block;
+      width:auto;
+      height:23%;
+      padding-left:1em;
+      padding-right:1em;
+      z-index: 10;
     }
   </style>
 </head>
@@ -53,19 +106,20 @@
     </script>
   </div>
   <div class="prompter">
-    
+  <h1>Chat with an AI</h1>
+  <p>The button below activates a JavaScript when it is clicked.</p>
+  <form>
+    <input type="text" id="prompt" onkeydown="return (event.keyCode!=13);">
+    <input type="button" value="Click me" onclick="get_prompt()">
+  </form>
+  </div>
+  <div id="history">
   </div>
 </div>
 
-<h1>Chat with an AI</h1>
-<div id="history">
 
-</div>
-<p>The button below activates a JavaScript when it is clicked.</p>
-<form>
-  <input type="text" id="lname", name="lname">
-  <input type="button" value="Click me" onclick="msg()">
-</form>
+
+
 
 </body>
 </html>

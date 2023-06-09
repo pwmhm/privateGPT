@@ -58,6 +58,7 @@ class dataManager():
         {", ".join([" ".join([k, v, "NOT", "NULL"]) for k, v in values.items()])}
         );
         '''
+        logger.info(cmd)
         conn.execute(cmd)
         logger.info(f"Successfully created a database - {self.db}")
         conn.close()
@@ -252,9 +253,7 @@ class gptManager(dataManager):
         conn.close()
 
 
-    def new_session(self):
-        # TODO 
-        title = "session-xxx"
+    def new_session(self, title):
         values = {
             "user": "TEXT",
             "message": "TEXT"
