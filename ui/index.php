@@ -9,11 +9,13 @@
     let active_session = "";
 
     // TODO get_hist and refresh has a conflict. fix this.
-    function refresh(){
+    async function refresh(){
       if(active_session){
         $("#chat").load(`chat.php/?sess=${active_session}`);
-        $(".sessions").load('sessions.php');
+      } else{
+        $("#chat").load(`chat.php`);
       }
+      $("#sess").load('sessions.php');
     }
 
     // function when changing active session, separate from refresh_chat()
@@ -32,16 +34,26 @@
         body: res_body
         })
       }
-    
+
     // wrapper for sending prompt to gpt.
     function get_prompt(){
       const content = document.getElementById("prompt");
       msg("prompt", content.value, active_session);
     }
 
-    window.onload = function(){
-      setInterval(refresh, 200);
+    function delete_sess(sess){
+      if (active_session === sess){
+        active_session = "";
+      }
+      msg("deletion", "", sess);
     }
+
+    window.addEventListener('load', function(){
+      setInterval(async function(){
+          await refresh();
+      }, 600);
+    });
+    
   </script>
   <style>
     html{
@@ -64,18 +76,17 @@
       font-size: 1.8em;
       display:inherit;
       float:right;
-      width:74.5%;
-      height:76%;
+      width:83.5%;
+      height:75%;
       padding-left:1em;
       padding-right:1em;
-      box-shadow: 2px solid black;
       overflow-y: auto;
       z-index: -1;
     }
     .sessions{
       background:#343d46;
       display:inherit;
-      width:20%;
+      width:12%;
       height:76%;
       padding-left:5px;
       padding-right:1em;
@@ -95,9 +106,9 @@
 <body>
 
 <div class="main">
-  <div class="sessions">
+  <div class="sessions", id="sess">
     <script>
-      $(".sessions").load('sessions.php');
+      $("#sess").load('sidebar.php');
     </script>
   </div>
   <div class="history", id="chat">
@@ -113,13 +124,7 @@
     <input type="button" value="Click me" onclick="get_prompt()">
   </form>
   </div>
-  <div id="history">
-  </div>
 </div>
-
-
-
-
 
 </body>
 </html>

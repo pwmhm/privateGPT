@@ -69,6 +69,13 @@ class dataManager():
             cmd = f"DELETE FROM {table_name} WHERE {k} = '{v}'"
             conn.execute(cmd)
         conn.close()
+    
+    def drop_table(self, table_name):
+        conn = sqlite3.connect(self.db)
+        cmd = f"DROP TABLE {table_name}"
+        conn.execute(cmd)
+        logger.info(f"Succesfully dropped table: {table_name}")
+        conn.close()
 
     def insert_values(self, table_name, values: list):
         conn = sqlite3.connect(self.db)

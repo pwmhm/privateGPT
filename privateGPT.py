@@ -65,6 +65,10 @@ class Prompter():
         retriever = self.db.as_retriever(search_kwargs={"k": self.target_source_chunks})
         self.qa = RetrievalQA.from_chain_type(llm=self.llm, chain_type="stuff", retriever=retriever, return_source_documents= False)
 
+    def delete_entry(list_of_datas):
+        self.db = Chroma(persist_directory=self.persist_directory, embedding_function=self.embeddings, client_settings=CHROMA_SETTINGS)
+
+
     def ingestion(self):
         # Add file to database
         # Save file to db
@@ -109,11 +113,11 @@ class Serve(http.server.BaseHTTPRequestHandler):
         
         if request_type == "prompt":
             assert request_content != str, "Prompt must be literal strings!!"
-            session = request["session"] 
-            logging.info(session)
-            self.prompter.db_manager.insert_values(session, [["user", request_content]])
+            session_name = request["session"] 
+            logging.info(session_name)
+            self.prompter.db_manager.insert_values(session_name, [["user", request_content]])
             response_content = self.prompter.prompt(request_content)
-            self.prompter.db_manager.insert_values(session, [["AI", response_content]])
+            self.prompter.db_manager.insert_values(session_name, [["AI", response_content]])
 
             response_json['content'] = response_content
             pass
@@ -122,7 +126,15 @@ class Serve(http.server.BaseHTTPRequestHandler):
             pass
         elif request_type == "new_sess":
             session_name = request_content
+            logging.info(f"Creating session: {session_name}")
             self.prompter.db_manager.new_session(session_name)
+        elif request_type == "deletion":
+            session_name = request["session"]
+            if "docs" in session_name:
+                logging.info(f"Deleting Documents: {session_name}")
+                self.prompter.db_manager.drop_values(session_name, {"doc_path": request_content})
+            logging.info(f"Deleting session: {session_name}")
+            self.prompter.db_manager.drop_table(session_name)
         else:
             response_code = 404
 
