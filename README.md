@@ -45,5 +45,6 @@ docker run --network=host --gpus all --mount type=bind,source=$(pwd),target=/tmp
    - [X] Modify dockerfile such that deployment is automatic
    - [x] Turn into HTTP server (kinda like a serverless type of thing?)
    - [x] Create simple UI (kinda like ChatGPT UI)
+   - [x] Add more functionality (add/delete sessions)
+   - [ ] Add more functionality (add/del documents)
    - [ ] Prettify UI
-   - [ ] Add more functionality (add/del documents, delete sessions)
