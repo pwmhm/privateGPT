@@ -44,6 +44,9 @@ class Prompter():
         self.setup_llm()
         self.refresh_qa()
 
+    def reset_db(self):
+        self.db_manager = data.gptManager(self.docsmanager_path)
+        self.refresh_qa()
 
     def setup_llm(self):
         # Parse the command line arguments
@@ -58,16 +61,12 @@ class Prompter():
                 self.llm = GPT4All(model=self.model_path, n_ctx=self.model_n_ctx, backend='gptj', callbacks=callbacks, verbose=False)
             case _default:
                 logging.info(f"Model {self.model_type} not supported!")
-                exit;
+                exit()
 
     def refresh_qa(self):
         self.db = Chroma(persist_directory=self.persist_directory, embedding_function=self.embeddings, client_settings=CHROMA_SETTINGS)
         retriever = self.db.as_retriever(search_kwargs={"k": self.target_source_chunks})
         self.qa = RetrievalQA.from_chain_type(llm=self.llm, chain_type="stuff", retriever=retriever, return_source_documents= False)
-
-    def delete_entry(list_of_datas):
-        self.db = Chroma(persist_directory=self.persist_directory, embedding_function=self.embeddings, client_settings=CHROMA_SETTINGS)
-
 
     def ingestion(self):
         # Add file to database
@@ -101,6 +100,7 @@ class Serve(http.server.BaseHTTPRequestHandler):
         str = "V1.0"
         self.wfile.write(str.encode('utf-8'))
     
+    # TODO maybe turn into api endpoints instead of just a simple http?
     def do_POST(self):
         content_length = int(self.headers['Content-Length'])
         data = self.rfile.read(content_length).decode('utf-8')
@@ -128,13 +128,19 @@ class Serve(http.server.BaseHTTPRequestHandler):
             session_name = request_content
             logging.info(f"Creating session: {session_name}")
             self.prompter.db_manager.new_session(session_name)
+        elif request_type == "add_doc":
+            #parse documents here
+            pass
         elif request_type == "deletion":
             session_name = request["session"]
             if "docs" in session_name:
                 logging.info(f"Deleting Documents: {session_name}")
-                self.prompter.db_manager.drop_values(session_name, {"doc_path": request_content})
-            logging.info(f"Deleting session: {session_name}")
-            self.prompter.db_manager.drop_table(session_name)
+                self.prompter.db_manager.remove_document(request_content)
+                self.prompter.reset_db()
+                self.prompter.refresh_qa()
+            else:
+                logging.info(f"Deleting session: {session_name}")
+                self.prompter.db_manager.drop_table(session_name)
         else:
             response_code = 404
 

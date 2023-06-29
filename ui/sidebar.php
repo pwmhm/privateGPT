@@ -53,7 +53,7 @@
         foreach($result as $row){
             $name = explode("/", $row['doc_path']);
             $clean = str_replace("'", '', $name);
-            print "<p>" . $row['id'] . ". <a href=".$row['doc_path'].">".end($clean)."</a><a href=\"javascript:msg('deletion', '". $row['doc_path']."', 'docs')\">x</a></p>";
+            print "<p>" . $row['id'] . ". <button class='title' style='display:inline-block; onclick=".$row['doc_path'].">".end($clean)."</button><button onclick=\"javascript:msg('deletion', ". $row['doc_path'].", 'docs')\">X</button></p>";
         }
         ?>
 </body>

@@ -7,6 +7,7 @@ from multiprocessing import Pool
 from tqdm import tqdm
 import glob
 import logging
+import shutil
 import sqlite3
 
 from langchain.document_loaders import (
@@ -233,7 +234,9 @@ class gptManager(dataManager):
         super().__init__(dbpath, db_name)
         self.raw_docs_dir = os.path.join(dbpath, "src_docs")
         self.doc_manager = ["docs", {
-            "doc_path": "TEXT"
+            "doc_name": "TEXT",
+            "doc_path": "TEXT",
+            "file": "BLOB"
         }]
 
         self.create_table(self.doc_manager[0], self.doc_manager[1])
@@ -259,6 +262,26 @@ class gptManager(dataManager):
             update_vdb(source_dir=self.raw_docs_dir)
         conn.close()
 
+    def add_document(self, content):
+        name = content["name"]
+        blob = content["file"]
+
+        path_file = os.path.join(self.raw_docs_dir, name)
+
+        with open(path_file, 'wb') as f:
+            f.write(blob)
+        self.insert_values(self.doc_manager[0], [name, path_file, blob])
+        update_vdb(source_dir=self.raw_docs_dir)
+
+
+    def remove_document(self, doc_path):
+        os.remove(doc_path)
+
+        # TODO very crude solution to delete the entire database and start from scratch
+        # there must be a way to only delete some documents.
+        shutil.rmtree(persist_directory)
+
+        self.drop_values("docs", {"doc_path": doc_path})
 
     def new_session(self, title):
         values = {

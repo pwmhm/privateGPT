@@ -29,9 +29,8 @@ ENV LLAMA_CUBLAS=1
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-# copy initial documents to db for testing
-RUN mkdir db
-COPY ./source_documents ./db/src_docs
+# make document directories
+RUN mkdir -p db/src_docs
 
 # Then copy the rest
 COPY . .

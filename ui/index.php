@@ -15,7 +15,7 @@
       } else{
         $("#chat").load(`chat.php`);
       }
-      $("#sess").load('sessions.php');
+      $("#sess").load('sidebar.php');
     }
 
     // function when changing active session, separate from refresh_chat()
